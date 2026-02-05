@@ -100,18 +100,39 @@ Politely ask for the "Direct Transfer Details" again.
 """
              
         # Temporarily add this guidance for this turn only (don't save to perm history to save tokens/confusion)
-        messages_payload = SESSIONS[session_id] + [{"role": "system", "content": current_extraction_status}]
+        messages_payload = SESSIONS[session_id] + [{"role": "system", "content": current_extraction_status + "\nIMPORTANT: OUTPUT ONLY SAM'S REPLY. DO NOT COMPLETE THE SCAMMER'S SIDE."}]
 
-        try:
-            chat_completion = client.chat.completions.create(
-                messages=messages_payload,
-                model="llama-3.3-70b-versatile",
-                timeout=10.0 # Prevent long hangs
-            )
-            ai_reply = chat_completion.choices[0].message.content
-        except Exception as llm_error:
-            print(f"LLM Error: {llm_error}")
-            ai_reply = "I'm sorry, my signal is bad. Can you text me that again?"
+        # 4. AI Logic (Retry + Fallback Strategy)
+        # Strategy: Try the smart model (70b). If it hangs/fails, SWAP to the fast model (8b).
+        models_to_try = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+        ai_reply = None
+        
+        for model in models_to_try:
+            try:
+                print(f"Trying model: {model}...")
+                chat_completion = client.chat.completions.create(
+                    messages=messages_payload,
+                    model=model,
+                    # If 70b is overloaded, fail fast (15s) and switch to 8b which is instant
+                    timeout=15.0 if model == "llama-3.3-70b-versatile" else 10.0,
+                    # STOP IT from writing the scammer's next line
+                    stop=["Scammer:", "User:", "\n\n"] 
+                )
+                ai_reply = chat_completion.choices[0].message.content
+                if ai_reply: 
+                    # Extra safety: Clean up if it hallucinated a label like "Sam:"
+                    ai_reply = ai_reply.replace("Sam:", "").replace("Assistant:", "").strip()
+                    # Cut off if it started writing a script
+                    if "Scammer:" in ai_reply:
+                        ai_reply = ai_reply.split("Scammer:")[0].strip()
+                    break # Success!
+            except Exception as e:
+                print(f"Model {model} failed: {e}")
+                continue # Try next model
+
+        # Logic for total failure (both models dead)
+        if not ai_reply:
+            ai_reply = "Hold on, I lost connection for a second. What were you saying?"
         
         SESSIONS[session_id].append({"role": "assistant", "content": ai_reply})
 
