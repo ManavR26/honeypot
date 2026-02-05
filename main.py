@@ -100,19 +100,18 @@ Politely ask for the "Direct Transfer Details" again.
 """
              
         # Temporarily add this guidance for this turn only (don't save to perm history to save tokens/confusion)
-        messages_payload = SESSIONS[session_id] + [{"role": "system", "content": current_extraction_status + "\nIMPORTANT: OUTPUT ONLY SAM'S REPLY. DO NOT COMPLETE THE SCAMMER'S SIDE."}]
+        messages_payload = SESSIONS[session_id] + [{"role": "system", "content": current_extraction_status}]
 
         try:
             chat_completion = client.chat.completions.create(
                 messages=messages_payload,
                 model="llama-3.3-70b-versatile",
-                timeout=30.0 # Increased to 30s to prevent 'bad signal' errors
+                timeout=10.0 # Prevent long hangs
             )
             ai_reply = chat_completion.choices[0].message.content
         except Exception as llm_error:
             print(f"LLM Error: {llm_error}")
-            # Fallback that keeps the convo alive but acknowledges the error
-            ai_reply = "Hold on, I lost connection for a second. What were you saying?"
+            ai_reply = "I'm sorry, my signal is bad. Can you text me that again?"
         
         SESSIONS[session_id].append({"role": "assistant", "content": ai_reply})
 
