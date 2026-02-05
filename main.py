@@ -114,10 +114,17 @@ Politely ask for the "Direct Transfer Details" again.
                     messages=messages_payload,
                     model=model,
                     # If 70b is overloaded, fail fast (15s) and switch to 8b which is instant
-                    timeout=15.0 if model == "llama-3.3-70b-versatile" else 10.0
+                    timeout=15.0 if model == "llama-3.3-70b-versatile" else 10.0,
+                    # STOP IT from writing the scammer's next line
+                    stop=["Scammer:", "User:", "\n\n"] 
                 )
                 ai_reply = chat_completion.choices[0].message.content
                 if ai_reply: 
+                    # Extra safety: Clean up if it hallucinated a label like "Sam:"
+                    ai_reply = ai_reply.replace("Sam:", "").replace("Assistant:", "").strip()
+                    # Cut off if it started writing a script
+                    if "Scammer:" in ai_reply:
+                        ai_reply = ai_reply.split("Scammer:")[0].strip()
                     break # Success!
             except Exception as e:
                 print(f"Model {model} failed: {e}")
